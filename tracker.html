@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#07090c">
+<title>STORMWATCH · ŚLEDZENIE BOJOWE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07090c; --panel:#0c1016; --line:#1a2230;
+  --red:#ff2b2b; --amber:#ffb020; --green:#39ff8a; --cyan:#37c8ff;
+  --dim:#5a6a80; --fg:#d7e2ee;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;overflow-x:hidden}
+.mono{font-family:'IBM Plex Mono',monospace}
+h1,h2,.disp{font-family:'Chakra Petch',sans-serif}
+
+/* ── boot overlay ── */
+#boot{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;flex-direction:column;
+  justify-content:center;padding:24px;gap:4px}
+#boot .line{font-size:13px;color:var(--green);white-space:pre-wrap;min-height:18px}
+#boot .line.red{color:var(--red)}
+#boot .line.dim{color:var(--dim)}
+#bootBtn{margin-top:28px;background:transparent;border:2px solid var(--red);color:var(--red);
+  font-family:'Chakra Petch';font-weight:700;font-size:18px;letter-spacing:2px;padding:16px;
+  width:100%;cursor:pointer;text-transform:uppercase;animation:pulse 1.6s infinite}
+#bootBtn:active{background:var(--red);color:#000}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,43,43,.5)}50%{box-shadow:0 0 22px 4px rgba(255,43,43,.25)}}
+
+/* ── main ── */
+#app{display:none;min-height:100%;padding:10px 12px 24px}
+header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:8px}
+header h1{font-size:15px;letter-spacing:3px;color:var(--red)}
+header .st{font-size:10px;color:var(--green)}
+header .st::before{content:"●";margin-right:5px;animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.15}}
+
+/* verdict */
+#verdict{margin:14px 0 8px;border:1px solid var(--line);background:var(--panel);padding:14px 12px;text-align:center}
+#verdictWord{font-family:'Chakra Petch';font-weight:700;font-size:34px;letter-spacing:3px;line-height:1.05}
+#verdictSub{font-size:12px;color:var(--dim);margin-top:6px}
+#eta{font-family:'Chakra Petch';font-weight:700;font-size:22px;margin-top:8px;display:none}
+.v-clear #verdictWord{color:var(--green)}
+.v-away #verdictWord{color:var(--cyan)}
+.v-watch #verdictWord{color:var(--amber)}
+.v-impact{border-color:var(--red);animation:alarmbox .8s infinite}
+.v-impact #verdictWord,.v-impact #eta{color:var(--red)}
+@keyframes alarmbox{0%,100%{background:var(--panel)}50%{background:#2a0b0b}}
+
+/* scope */
+#scopeWrap{position:relative;margin:10px auto;max-width:420px}
+#scope{width:100%;display:block;background:radial-gradient(circle at 50% 50%,#0a1210 0%,#060a08 70%,#04060a 100%);
+  border:1px solid var(--line);border-radius:50%}
+#scopeTag{position:absolute;top:8px;left:12px;font-size:10px;color:var(--dim);letter-spacing:2px}
+
+/* data grid */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.cell{background:var(--panel);border:1px solid var(--line);padding:8px 10px}
+.cell .k{font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase}
+.cell .v{font-size:16px;font-weight:600;margin-top:3px;color:var(--fg)}
+.cell .v.red{color:var(--red)} .cell .v.amb{color:var(--amber)} .cell .v.grn{color:var(--green)}
+
+/* log */
+#log{margin-top:12px;background:var(--panel);border:1px solid var(--line);padding:8px 10px;
+  height:120px;overflow-y:auto;font-size:10.5px;line-height:1.55;color:var(--dim)}
+#log .r{color:var(--red)} #log .g{color:var(--green)} #log .a{color:var(--amber)}
+
+/* controls */
+#ctrl{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+#ctrl label{display:flex;gap:6px;align-items:center}
+#ntfyTopic{background:#060a10;border:1px solid var(--line);color:var(--fg);padding:6px;font-family:inherit;font-size:11px;flex:1;min-width:140px}
+button.sm{background:transparent;border:1px solid var(--line);color:var(--dim);padding:6px 10px;font-family:inherit;font-size:11px;cursor:pointer}
+button.sm:active{border-color:var(--red);color:var(--red)}
+@media (prefers-reduced-motion: reduce){ *{animation:none!important} }
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div class="line" id="bl0"></div><div class="line" id="bl1"></div><div class="line" id="bl2"></div>
+  <div class="line" id="bl3"></div><div class="line" id="bl4"></div><div class="line red" id="bl5"></div>
+  <button id="bootBtn" style="display:none">▶ Inicjalizacja śledzenia</button>
+</div>
+
+<div id="app">
+  <header>
+    <h1>STORMWATCH · ŚLEDZENIE</h1><span class="st" id="hdrSt">AKTYWNE</span>
+  </header>
+
+  <div id="verdict" class="v-clear">
+    <div id="verdictWord">SKANOWANIE…</div>
+    <div id="verdictSub">czekam na radar i GPS</div>
+    <div id="eta"></div>
+  </div>
+
+  <div id="scopeWrap">
+    <canvas id="scope" width="640" height="640"></canvas>
+    <div id="scopeTag">ZASIĘG 150 KM · TY = ŚRODEK</div>
+  </div>
+
+  <div class="grid">
+    <div class="cell"><div class="k">Najbliższa komórka</div><div class="v" id="dCell">—</div></div>
+    <div class="cell"><div class="k">Siła echa</div><div class="v" id="dDbz">—</div></div>
+    <div class="cell"><div class="k">Ruch komórki</div><div class="v" id="dVec">—</div></div>
+    <div class="cell"><div class="k">Twoja prędkość</div><div class="v" id="dSpd">—</div></div>
+    <div class="cell"><div class="k">GPS</div><div class="v" id="dGps" style="font-size:12px">—</div></div>
+    <div class="cell"><div class="k">Następny skan</div><div class="v" id="dNext">—</div></div>
+  </div>
+
+  <div id="ctrl">
+    <label><input type="checkbox" id="sndChk" checked> syrena</label>
+    <label><input type="checkbox" id="pushChk" checked> push ntfy</label>
+    <input id="ntfyTopic" value="stormwatch_x6QQ62-BU5" spellcheck="false">
+    <button class="sm" id="scanBtn">SKANUJ TERAZ</button>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script>
+"use strict";
+/* ═══════════ KONFIG ═══════════ */
+const SCAN_MS   = 5*60*1000;   // odświeżanie radaru
+const RANGE_KM  = 150;         // zasięg śledzenia
+const Z         = 7;           // zoom kafelków (3x3 ≈ 660 km)
+const DBZ_MIN   = 35;          // próg echa branego pod uwagę
+const DBZ_CELL  = 40;          // próg "komórki bojowej"
+const IMPACT_KM = 15;          // trafienie
+const NEAR_KM   = 40;          // otarcie
+const PUSH_COOLDOWN = 10*60*1000;
+
+let me = null;                 // {lat,lon,spd}
+let frames = [];               // radar frames meta
+let tracks = [];               // per-frame: {t, pts:[{lat,lon,dbz}], cen:{lat,lon}|null}
+let motion = null;             // {vLatKmH, vLonKmH, spdKmH, dirTxt}
+let target = null;             // najbliższa komórka {lat,lon,dbz,dist,brg}
+let verdictLvl = 0;            // 0 clear 1 away 2 watch 3 impact
+let lastPush = {};
+let sweepA = 0, audioCtx = null;
+
+const $ = id => document.getElementById(id);
+const log = (m,c)=>{const d=$("log");const t=new Date().toLocaleTimeString('pl');
+  d.innerHTML = `<div class="${c||''}">[${t}] ${m}</div>` + d.innerHTML;};
+
+/* ═══════════ GEO MATH ═══════════ */
+const R=6371;
+const rad=d=>d*Math.PI/180, deg=r=>r*180/Math.PI;
+function distKm(a,b,c,d){const p1=rad(a),p2=rad(c),dp=rad(c-a),dl=rad(d-b);
+  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));}
+function bearing(a,b,c,d){const p1=rad(a),p2=rad(c),dl=rad(d-b);
+  const y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return (deg(Math.atan2(y,x))+360)%360;}
+const COMP=["N","NE","E","SE","S","SW","W","NW"];
+const comp=b=>COMP[Math.round(b/45)%8];
+function tileXY(lat,lon,z){const n=2**z;
+  return [ (lon+180)/360*n,
+    (1-Math.log(Math.tan(rad(lat))+1/Math.cos(rad(lat)))/Math.PI)/2*n ];}
+function pxLatLon(z,px,py){const n=2**z*256;
+  return [ deg(Math.atan(Math.sinh(Math.PI*(1-2*py/n)))), px/n*360-180 ];}
+
+/* ═══════════ RADAR ═══════════ */
+async function fetchMeta(){
+  const r = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+  const j = await r.json();
+  const past = (j.radar&&j.radar.past)||[];
+  return {host:j.host||"https://tilecache.rainviewer.com", frames:past.slice(-3)};
+}
+function loadTile(url){return new Promise(res=>{
+  const im=new Image(); im.crossOrigin="anonymous";
+  im.onload=()=>res(im); im.onerror=()=>res(null); im.src=url;});}
+
+async function scanFrame(host,frame){
+  const [cx,cy]=tileXY(me.lat,me.lon,Z);
+  const tx0=Math.floor(cx),ty0=Math.floor(cy);
+  const cv=document.createElement("canvas");cv.width=256;cv.height=256;
+  const cc=cv.getContext("2d",{willReadFrequently:true});
+  const pts=[];
+  for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+    const tx=tx0+dx,ty=ty0+dy;
+    const im=await loadTile(`${host}${frame.path}/256/${Z}/${tx}/${ty}/0/0_0.png`);
+    if(!im)continue;
+    cc.clearRect(0,0,256,256);cc.drawImage(im,0,0);
+    const d=cc.getImageData(0,0,256,256).data;
+    for(let i=0;i<256*256;i+=2){
+      const a=d[i*4+3]; if(!a)continue;
+      const dbz=Math.min(d[i*4]/2-32,72);
+      if(dbz<DBZ_MIN)continue;
+      const py=(i/256)|0, px=i%256;
+      const [la,lo]=pxLatLon(Z,tx*256+px,ty*256+py);
+      const ds=distKm(me.lat,me.lon,la,lo);
+      if(ds<=RANGE_KM+60) pts.push({lat:la,lon:lo,dbz,dist:ds});
+    }
+  }
+  // centroid ważony siłą (do wektora ruchu)
+  let cen=null;
+  const w=pts.filter(p=>p.dist<=RANGE_KM+60);
+  if(w.length){let sw=0,sla=0,slo=0;
+    for(const p of w){const g=p.dbz-30;sw+=g;sla+=p.lat*g;slo+=p.lon*g;}
+    cen={lat:sla/sw,lon:slo/sw};}
+  return {t:frame.time*1000, pts, cen};
+}
+
+function computeMotion(){
+  motion=null;
+  const withC=tracks.filter(t=>t.cen);
+  if(withC.length<2)return;
+  const a=withC[0], b=withC[withC.length-1];
+  const dtH=(b.t-a.t)/3600000; if(dtH<=0)return;
+  const dN=distKm(a.cen.lat,a.cen.lon,b.cen.lat,a.cen.lon)*(b.cen.lat>a.cen.lat?1:-1);
+  const dE=distKm(a.cen.lat,a.cen.lon,a.cen.lat,b.cen.lon)*(b.cen.lon>a.cen.lon?1:-1);
+  const vN=dN/dtH, vE=dE/dtH, spd=Math.hypot(vN,vE);
+  if(spd>140)return; // artefakt
+  const dir=(deg(Math.atan2(vE,vN))+360)%360;
+  motion={vN,vE,spdKmH:spd,dirTxt:comp(dir),dirDeg:dir};
+}
+
+function findTarget(){
+  target=null;
+  const last=tracks[tracks.length-1]; if(!last)return;
+  const strong=last.pts.filter(p=>p.dbz>=DBZ_CELL&&p.dist<=RANGE_KM);
+  if(!strong.length)return;
+  strong.sort((a,b)=>a.dist-b.dist);
+  const near=strong[0];
+  // siła komórki = max dBZ w promieniu 25 km od najbliższego piksela
+  let mx=near.dbz;
+  for(const p of strong)if(distKm(near.lat,near.lon,p.lat,p.lon)<25)mx=Math.max(mx,p.dbz);
+  target={lat:near.lat,lon:near.lon,dbz:mx,dist:near.dist,
+          brg:bearing(me.lat,me.lon,near.lat,near.lon)};
+}
+
+function predict(){
+  // zwraca {lvl, word, sub, etaMin, minDist}
+  if(!target) return {lvl:0,word:"CZYSTO",sub:`brak komórek ≥${DBZ_CELL} dBZ w ${RANGE_KM} km`};
+  const power = target.dbz>=58?"GRAD / NAWAŁNICA": target.dbz>=50?"MOŻLIWY GRAD":
+                target.dbz>=42?"SILNA BURZA":"ULEWA";
+  if(!motion){
+    return {lvl:2,word:"OBSERWACJA",sub:`komórka ${target.dist.toFixed(0)} km na ${comp(target.brg)} · ~${target.dbz.toFixed(0)} dBZ (${power}) · liczę wektor…`};
+  }
+  // symulacja toru komórki na 120 min
+  const kmLat=110.57, kmLon=111.32*Math.cos(rad(me.lat));
+  let minD=1e9, tMin=0;
+  for(let t=0;t<=120;t+=2){
+    const la=target.lat + motion.vN*(t/60)/kmLat;
+    const lo=target.lon + motion.vE*(t/60)/kmLon;
+    const d=distKm(me.lat,me.lon,la,lo);
+    if(d<minD){minD=d;tMin=t;}
+  }
+  const closing = minD < target.dist-2;
+  if(minD<=IMPACT_KM){
+    const eta = target.dist<=IMPACT_KM ? 0 : tMin;
+    return {lvl:3,word: eta<=2?"JEST NAD TOBĄ":"UDERZENIE",
+      sub:`${power} · ~${target.dbz.toFixed(0)} dBZ · z ${comp(target.brg)} · ruch ${motion.spdKmH.toFixed(0)} km/h ${motion.dirTxt}`,
+      etaMin:eta, minDist:minD};
+  }
+  if(minD<=NEAR_KM && closing){
+    return {lvl:2,word:"OTRZE SIĘ",sub:`minie ~${minD.toFixed(0)} km od Ciebie za ~${tMin} min · ${power} · ~${target.dbz.toFixed(0)} dBZ`};
+  }
+  if(closing){
+    return {lvl:2,word:"ZBLIŻA SIĘ",sub:`komórka ${target.dist.toFixed(0)} km ${comp(target.brg)} · minie w ~${minD.toFixed(0)} km · ${power}`};
+  }
+  return {lvl:1,word:"ODDALA SIĘ",sub:`komórka ${target.dist.toFixed(0)} km na ${comp(target.brg)} odchodzi ${motion.dirTxt} · bez zagrożenia`};
+}
+
+/* ═══════════ ALARM ═══════════ */
+function siren(){
+  if(!$("sndChk").checked||!audioCtx)return;
+  const t0=audioCtx.currentTime;
+  for(let i=0;i<3;i++){
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.type="sawtooth";
+    o.frequency.setValueAtTime(420,t0+i*0.9);
+    o.frequency.exponentialRampToValueAtTime(980,t0+i*0.9+0.45);
+    o.frequency.exponentialRampToValueAtTime(420,t0+i*0.9+0.9);
+    g.gain.setValueAtTime(0.0001,t0+i*0.9);
+    g.gain.exponentialRampToValueAtTime(0.5,t0+i*0.9+0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+i*0.9+0.88);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t0+i*0.9);o.stop(t0+i*0.9+0.9);
+  }
+  if(navigator.vibrate)navigator.vibrate([400,150,400,150,700]);
+}
+async function pushNtfy(v){
+  if(!$("pushChk").checked)return;
+  const topic=$("ntfyTopic").value.trim(); if(!topic)return;
+  const key="lvl"+v.lvl;
+  if(lastPush[key] && Date.now()-lastPush[key]<PUSH_COOLDOWN)return;
+  lastPush[key]=Date.now();
+  const title = v.lvl===3?"🧊 TRACKER: UDERZENIE":"◆ Tracker: "+v.word;
+  try{
+    await fetch("https://ntfy.sh/"+encodeURIComponent(topic),{method:"POST",
+      headers:{Title:title,Priority:v.lvl===3?"urgent":"high",Tags:"rotating_light,ice_cube"},
+      body:`${v.word}${v.etaMin!=null?" za ~"+v.etaMin+" min":""} — ${v.sub}`});
+    log("push ntfy wysłany","a");
+  }catch(e){log("push nieudany: "+e,"r");}
+}
+
+/* ═══════════ UI ═══════════ */
+function setVerdict(v){
+  const box=$("verdict");
+  box.className = ["v-clear","v-away","v-watch","v-impact"][v.lvl];
+  $("verdictWord").textContent=v.word;
+  $("verdictSub").textContent=v.sub;
+  const e=$("eta");
+  if(v.lvl===3&&v.etaMin>0){e.style.display="block";e.textContent="T-"+v.etaMin+" MIN";}
+  else if(v.lvl===3){e.style.display="block";e.textContent="TERAZ";}
+  else e.style.display="none";
+  if(v.lvl===3&&verdictLvl<3){siren();}
+  if(v.lvl>=2)pushNtfy(v);
+  verdictLvl=v.lvl;
+}
+function paintData(){
+  $("dCell").textContent = target? `${target.dist.toFixed(0)} km ${comp(target.brg)}`:"brak";
+  $("dCell").className = "v "+(target? (target.dist<NEAR_KM?"red":"amb"):"grn");
+  $("dDbz").textContent = target? `~${target.dbz.toFixed(0)} dBZ`:"—";
+  $("dDbz").className = "v "+(target&&target.dbz>=50?"red":target?"amb":"");
+  $("dVec").textContent = motion? `${motion.spdKmH.toFixed(0)} km/h → ${motion.dirTxt}`:"—";
+  $("dSpd").textContent = me&&me.spd!=null? `${(me.spd*3.6).toFixed(0)} km/h`:"—";
+  $("dGps").textContent = me? `${me.lat.toFixed(4)}, ${me.lon.toFixed(4)}`:"—";
+}
+
+/* scope */
+function drawScope(){
+  const cv=$("scope"),c=cv.getContext("2d"),W=cv.width,H=cv.height,cx=W/2,cy=H/2;
+  const rMax=W/2-14, kmToPx=rMax/RANGE_KM;
+  c.clearRect(0,0,W,H);
+  // pierścienie
+  c.strokeStyle="#173224";c.lineWidth=1;c.font="16px 'IBM Plex Mono'";c.fillStyle="#2c4a3a";
+  for(const kmv of [50,100,150]){
+    c.beginPath();c.arc(cx,cy,kmv*kmToPx,0,7);c.stroke();
+    c.fillText(kmv,cx+4,cy-kmv*kmToPx+18);
+  }
+  c.beginPath();c.moveTo(cx,cy-rMax);c.lineTo(cx,cy+rMax);c.moveTo(cx-rMax,cy);c.lineTo(cx+rMax,cy);c.stroke();
+  c.fillStyle="#2c4a3a";c.fillText("N",cx-5,cy-rMax+34);
+  // sweep
+  sweepA=(sweepA+0.03)%(Math.PI*2);
+  const gr=c.createConicGradient? null:null;
+  c.save();c.translate(cx,cy);c.rotate(sweepA);
+  const lg=c.createLinearGradient(0,0,rMax,0);
+  lg.addColorStop(0,"rgba(57,255,138,.28)");lg.addColorStop(1,"rgba(57,255,138,0)");
+  c.fillStyle=lg;c.beginPath();c.moveTo(0,0);c.arc(0,0,rMax,-0.5,0);c.closePath();c.fill();
+  c.restore();
+  // echa
+  const last=tracks[tracks.length-1];
+  if(last)for(const p of last.pts){
+    if(p.dist>RANGE_KM)continue;
+    const b=rad(bearing(me.lat,me.lon,p.lat,p.lon));
+    const x=cx+Math.sin(b)*p.dist*kmToPx, y=cy-Math.cos(b)*p.dist*kmToPx;
+    const col = p.dbz>=55?"#ff2b2b":p.dbz>=45?"#ffb020":"#39ff8a";
+    c.fillStyle=col;c.globalAlpha=.85;c.fillRect(x-2,y-2,4,4);c.globalAlpha=1;
+  }
+  // wektor ruchu z celu
+  if(target&&motion&&motion.spdKmH>3){
+    const b=rad(bearing(me.lat,me.lon,target.lat,target.lon));
+    const x=cx+Math.sin(b)*Math.min(target.dist,RANGE_KM)*kmToPx,
+          y=cy-Math.cos(b)*Math.min(target.dist,RANGE_KM)*kmToPx;
+    const md=rad(motion.dirDeg);
+    c.strokeStyle="#ff2b2b";c.lineWidth=3;c.beginPath();c.moveTo(x,y);
+    c.lineTo(x+Math.sin(md)*34,y-Math.cos(md)*34);c.stroke();
+    c.beginPath();c.arc(x,y,10,0,7);c.stroke();
+  }
+  // ty
+  c.fillStyle="#37c8ff";c.beginPath();c.arc(cx,cy,6,0,7);c.fill();
+  c.strokeStyle="rgba(55,200,255,.4)";c.beginPath();c.arc(cx,cy,11,0,7);c.stroke();
+  requestAnimationFrame(drawScope);
+}
+
+/* ═══════════ CYKL ═══════════ */
+let nextScanAt=0;
+async function scan(){
+  if(!me){log("czekam na GPS…","a");return;}
+  $("hdrSt").textContent="SKAN…";
+  try{
+    const meta=await fetchMeta();
+    frames=meta.frames;
+    tracks=[];
+    for(const f of frames)tracks.push(await scanFrame(meta.host,f));
+    computeMotion();findTarget();
+    const v=predict();setVerdict(v);paintData();
+    const ageMin=((Date.now()-frames[frames.length-1].time*1000)/60000).toFixed(0);
+    log(`skan OK · ech: ${tracks[tracks.length-1].pts.length} · klatka sprzed ${ageMin} min`
+        +(target?` · cel ${target.dist.toFixed(0)}km ${comp(target.brg)} ${target.dbz.toFixed(0)}dBZ`:""),
+        v.lvl>=3?"r":v.lvl===2?"a":"g");
+  }catch(e){log("błąd skanu: "+e.message,"r");}
+  $("hdrSt").textContent="AKTYWNE";
+  nextScanAt=Date.now()+SCAN_MS;
+}
+setInterval(()=>{const s=Math.max(0,Math.round((nextScanAt-Date.now())/1000));
+  $("dNext").textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  if(s===0&&nextScanAt)scan();},1000);
+
+/* ═══════════ BOOT ═══════════ */
+const BOOT=[
+ ["bl0","> STORMWATCH v3 · MODUŁ ŚLEDZENIA CELÓW"],
+ ["bl1","> ŁĄCZE RADAROWE ......... GOTOWE"],
+ ["bl2","> ANALIZA WEKTORÓW ....... GOTOWA"],
+ ["bl3","> SYRENA / WIBRACJE ...... GOTOWE"],
+ ["bl4","> KANAŁ ALARMOWY NTFY .... GOTOWY"],
+ ["bl5","> WYMAGANA ZGODA NA NAMIERZANIE POZYCJI"],
+];
+async function typeLines(){
+  for(const [id,txt] of BOOT){
+    const el=$(id);
+    for(const ch of txt){el.textContent+=ch;await new Promise(r=>setTimeout(r,10));}
+    await new Promise(r=>setTimeout(r,140));
+  }
+  $("bootBtn").style.display="block";
+}
+typeLines();
+
+$("bootBtn").onclick=async()=>{
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  try{if(navigator.wakeLock)await navigator.wakeLock.request("screen");}catch(e){}
+  navigator.geolocation.watchPosition(p=>{
+    const first=!me;
+    me={lat:p.coords.latitude,lon:p.coords.longitude,spd:p.coords.speed};
+    paintData();
+    if(first){log("GPS namierzony","g");scan();}
+  },e=>log("GPS odmówił: "+e.message,"r"),
+  {enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  $("boot").style.display="none";$("app").style.display="block";
+  drawScope();
+  log("ŚLEDZENIE ROZPOCZĘTE","r");
+};
+$("scanBtn").onclick=()=>scan();
+</script>
+</body>
+</html>
